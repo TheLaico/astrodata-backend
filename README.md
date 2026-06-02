@@ -24,12 +24,27 @@ Endpoints iniciales:
 - `GET /api/health`
 - `GET /api/status`
 - `GET /api/db/ping`
+- `POST /api/db/query`
 - `GET /api/stats`
 - `GET /api/objetos-celestes`
 - `POST /api/objetos-celestes`
 - `GET /api/objetos-celestes/{objeto_id}`
 - `PUT /api/objetos-celestes/{objeto_id}`
 - `DELETE /api/objetos-celestes/{objeto_id}`
+- `GET /api/documentos`
+- `POST /api/documentos`
+- `GET /api/documentos/{documento_id}`
+- `PUT /api/documentos/{documento_id}`
+- `DELETE /api/documentos/{documento_id}`
+- `GET /api/documentos/{documento_id}/chunks`
+- `POST /api/chunks`
+- `GET /api/chunks/{chunk_id}`
+- `PUT /api/chunks/{chunk_id}`
+- `DELETE /api/chunks/{chunk_id}`
+- `GET /api/busqueda?q=...`
+- `POST /api/chat/preguntar`
+- `GET /api/chat/historial`
+- `DELETE /api/chat/historial`
 
 ## Seed de objetos celestes
 
@@ -76,6 +91,28 @@ python -m app.seed.generar_embeddings_chunks
 ```
 
 Este proceso usa `all-MiniLM-L6-v2` para completar el campo `embedding` de cada documento en `document_chunks`. El modelo genera vectores normalizados de 384 dimensiones, compatibles con busqueda por coseno en MongoDB Atlas Vector Search.
+
+## Flujo recomendado de preparacion
+
+```powershell
+python -m app.seed.crear_indices
+python -m app.seed.seed_objetos_celestes
+python -m app.seed.seed_apod_documentos
+python -m app.seed.generar_embeddings_chunks
+uvicorn app.main:app --reload
+```
+
+Antes de usar `POST /api/chat/preguntar`, configura el indice vectorial en MongoDB Atlas usando `app/seed/atlas_vector_search_index.json` y verifica que Ollama este corriendo con el modelo definido en `OLLAMA_MODEL`.
+
+## Terminal de BD
+
+`POST /api/db/query` permite consultas controladas sobre MongoDB para la seccion administrativa. Soporta:
+
+- `find`
+- `aggregate`
+- `count_documents`
+
+Solo permite las colecciones del proyecto y bloquea operadores peligrosos como `$where`, `$function`, `$out` y `$merge`.
 
 ## Ejecutar pruebas
 

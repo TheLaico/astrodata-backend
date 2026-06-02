@@ -22,6 +22,17 @@ class CrearDocumentoFuente(DocumentoFuenteBase):
     pass
 
 
+class ActualizarDocumentoFuente(BaseModel):
+    fuente: TipoFuenteDocumento | None = None
+    titulo: str | None = Field(default=None, min_length=2, max_length=250)
+    fecha_publicacion: date | None = None
+    descripcion: str | None = Field(default=None, min_length=10)
+    url: HttpUrl | None = None
+    media_type: str | None = None
+    copyright: str | None = None
+    metadatos: dict[str, Any] | None = None
+
+
 class DocumentoFuenteRespuesta(DocumentoFuenteBase):
     id: str
     creado_en: datetime
@@ -41,6 +52,12 @@ class ChunkDocumentoBase(BaseModel):
 
 class CrearChunkDocumento(ChunkDocumentoBase):
     pass
+
+
+class ActualizarChunkDocumento(BaseModel):
+    texto: str | None = Field(default=None, min_length=10)
+    embedding: list[float] | None = None
+    metadatos: dict[str, Any] | None = None
 
 
 class ChunkDocumentoRespuesta(ChunkDocumentoBase):
