@@ -33,6 +33,10 @@ def get_database() -> AsyncIOMotorDatabase:
     return mongo_connection.database
 
 
+def get_database_or_none() -> AsyncIOMotorDatabase | None:
+    return mongo_connection.database
+
+
 async def ping_mongo() -> bool:
     if mongo_connection.database is None:
         return False
