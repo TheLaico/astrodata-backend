@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
 
     nasa_api_key: str = Field(default="DEMO_KEY", repr=False)
+    apod_seed_limit: int = 100
 
     model_config = SettingsConfigDict(
         env_file=".env",

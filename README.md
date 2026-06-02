@@ -23,6 +23,32 @@ Endpoints iniciales:
 
 - `GET /api/health`
 - `GET /api/status`
+- `GET /api/db/ping`
+- `GET /api/objetos-celestes`
+- `POST /api/objetos-celestes`
+- `GET /api/objetos-celestes/{objeto_id}`
+- `PUT /api/objetos-celestes/{objeto_id}`
+- `DELETE /api/objetos-celestes/{objeto_id}`
+
+## Seed de objetos celestes
+
+Despues de configurar `MONGODB_URI` en `.env`, ejecuta:
+
+```powershell
+python -m app.seed.seed_objetos_celestes
+```
+
+El seed inicial carga objetos astronomicos base en la coleccion `celestial_objects`.
+
+## Seed APOD
+
+Despues de configurar `MONGODB_URI` y `NASA_API_KEY` en `.env`, ejecuta:
+
+```powershell
+python -m app.seed.seed_apod_documentos
+```
+
+Este seed consulta NASA APOD, guarda documentos crudos en `documents` y divide las explicaciones en chunks dentro de `document_chunks`. En esta fase los chunks quedan con `embedding=None`; los embeddings se generan en el siguiente modulo.
 
 ## Ejecutar pruebas
 

@@ -31,3 +31,14 @@ def get_database() -> AsyncIOMotorDatabase:
         raise RuntimeError("MongoDB is not configured or connection is not initialized.")
 
     return mongo_connection.database
+
+
+async def ping_mongo() -> bool:
+    if mongo_connection.database is None:
+        return False
+
+    try:
+        await mongo_connection.database.command("ping")
+        return True
+    except Exception:
+        return False
