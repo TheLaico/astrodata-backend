@@ -7,6 +7,7 @@ from app.rag.ollama_client import OllamaClient
 from app.rag.prompt_builder import PromptBuilder
 from app.repositories.chunks_documentos_repository import ChunksDocumentosRepository
 from app.repositories.historial_consultas_repository import HistorialConsultasRepository
+from app.repositories.objetos_celestes_repository import ObjetosCelestesRepository
 from app.schemas.chat import (
     FuenteRag,
     HistorialConsultaRespuesta,
@@ -20,12 +21,14 @@ class ChatService:
         self,
         chunks_repository: ChunksDocumentosRepository,
         historial_repository: HistorialConsultasRepository,
+        objetos_repository: ObjetosCelestesRepository | None = None,
         generador_embeddings: GeneradorEmbeddings | None = None,
         ollama_client: OllamaClient | None = None,
         prompt_builder: PromptBuilder | None = None,
     ) -> None:
         self.chunks_repository = chunks_repository
         self.historial_repository = historial_repository
+        self.objetos_repository = objetos_repository
         self.generador_embeddings = generador_embeddings or GeneradorEmbeddings(settings.embedding_model)
         self.ollama_client = ollama_client or OllamaClient(settings.ollama_base_url, settings.ollama_model)
         self.prompt_builder = prompt_builder or PromptBuilder()
@@ -47,6 +50,8 @@ class ChatService:
             )
             for chunk in chunks
         ]
+
+        fuentes.extend(await self._buscar_fuentes_objetos(request.pregunta))
 
         prompt = self.prompt_builder.construir(request.pregunta, fuentes)
 
@@ -80,3 +85,81 @@ class ChatService:
     async def limpiar_historial(self) -> dict[str, int]:
         eliminados = await self.historial_repository.limpiar()
         return {"eliminados": eliminados}
+
+    async def _buscar_fuentes_objetos(self, pregunta: str) -> list[FuenteRag]:
+        if self.objetos_repository is None:
+            return []
+
+        objetos = await self.objetos_repository.buscar_por_texto(
+            self._extraer_terminos_busqueda(pregunta),
+            limite=3,
+        )
+
+        return [
+            FuenteRag(
+                chunk_id=f"objeto:{objeto['id']}",
+                documento_id=objeto["id"],
+                texto=self._formatear_objeto(objeto),
+                score=None,
+                metadatos={
+                    "coleccion": "celestial_objects",
+                    "tipo_fuente": "objeto_celeste",
+                    "nombre": objeto.get("nombre"),
+                },
+            )
+            for objeto in objetos
+        ]
+
+    def _extraer_terminos_busqueda(self, pregunta: str) -> list[str]:
+        stopwords = {
+            "sobre",
+            "para",
+            "como",
+            "cual",
+            "cuales",
+            "donde",
+            "esta",
+            "este",
+            "esta",
+            "esto",
+            "tiene",
+            "informacion",
+            "base",
+            "datos",
+            "que",
+            "hay",
+            "del",
+            "las",
+            "los",
+            "una",
+            "uno",
+            "con",
+            "por",
+        }
+        terminos = []
+        for palabra in pregunta.lower().replace("¿", " ").replace("?", " ").split():
+            normalizada = palabra.strip(".,:;()[]{}¡!\"'")
+            if len(normalizada) < 4 or normalizada in stopwords:
+                continue
+            terminos.append(normalizada)
+
+        return list(dict.fromkeys(terminos))[:8]
+
+    def _formatear_objeto(self, objeto: dict) -> str:
+        propiedades = objeto.get("propiedades_fisicas") or {}
+        propiedades_texto = ", ".join(
+            f"{clave}: {valor}" for clave, valor in propiedades.items()
+        )
+        etiquetas = ", ".join(objeto.get("etiquetas") or [])
+
+        partes = [
+            f"Objeto celeste: {objeto.get('nombre', 'Sin nombre')}",
+            f"Tipo: {objeto.get('tipo_objeto', 'desconocido')}",
+            f"Descripcion: {objeto.get('descripcion', '')}",
+        ]
+        if propiedades_texto:
+            partes.append(f"Propiedades fisicas: {propiedades_texto}")
+        if etiquetas:
+            partes.append(f"Etiquetas: {etiquetas}")
+
+        return "\n".join(partes)

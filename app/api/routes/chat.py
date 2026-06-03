@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db.mongodb import get_database
 from app.repositories.chunks_documentos_repository import ChunksDocumentosRepository
 from app.repositories.historial_consultas_repository import HistorialConsultasRepository
+from app.repositories.objetos_celestes_repository import ObjetosCelestesRepository
 from app.schemas.chat import (
     HistorialConsultaRespuesta,
     PreguntaChatRequest,
@@ -20,6 +21,7 @@ def obtener_servicio_chat(
     return ChatService(
         ChunksDocumentosRepository(database),
         HistorialConsultasRepository(database),
+        ObjetosCelestesRepository(database),
     )
 
 

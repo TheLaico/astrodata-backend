@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from bson import ObjectId
@@ -38,6 +39,31 @@ class ObjetosCelestesRepository:
             filtro["tipo_objeto"] = tipo_objeto
 
         cursor = self.collection.find(filtro).skip(salto).limit(limite)
+        documentos = await cursor.to_list(length=limite)
+
+        return [self._serializar(documento) for documento in documentos]
+
+    async def buscar_por_texto(self, terminos: list[str], *, limite: int) -> list[dict[str, Any]]:
+        patrones = [
+            {"$regex": re.escape(termino), "$options": "i"}
+            for termino in terminos
+            if termino.strip()
+        ]
+        if not patrones:
+            return []
+
+        condiciones: list[dict[str, Any]] = []
+        for patron in patrones:
+            condiciones.extend(
+                [
+                    {"nombre": patron},
+                    {"descripcion": patron},
+                    {"etiquetas": patron},
+                    {"tipo_objeto": patron},
+                ]
+            )
+
+        cursor = self.collection.find({"$or": condiciones}).limit(limite)
         documentos = await cursor.to_list(length=limite)
 
         return [self._serializar(documento) for documento in documentos]
