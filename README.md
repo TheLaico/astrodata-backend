@@ -18,16 +18,21 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Para desarrollo local, deja estas variables en `.env`:
+Edita `.env` con tu configuracion local:
 
 ```env
 MONGODB_URI=mongodb://localhost:27017/
 MONGODB_DATABASE=astrodata_lab
-OLLAMA_BASE_URL=http://localhost:11434
+
+OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.2
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-NASA_API_KEY=DEMO_KEY
+OLLAMA_TIMEOUT_SECONDS=180
+
+NASA_API_KEY=TU_API_KEY_DE_NASA
+APOD_SEED_LIMIT=100
 ```
+
+`NASA_API_KEY=DEMO_KEY` funciona para pruebas pequenas, pero suele fallar con `HTTP 429 Too Many Requests`.
 
 Las dependencias de embeddings se instalan aparte:
 
@@ -37,35 +42,57 @@ pip install -r requirements-ml.txt
 
 `requirements-ml.txt` usa `fastembed`, evitando la instalacion pesada de PyTorch.
 
-## Instalar y preparar Ollama
+## Requisito para Consulta IA: Ollama
 
-Descarga Ollama para Windows desde:
+La seccion **Consulta IA** necesita Ollama corriendo localmente. Si Ollama no esta disponible, el backend responde `503 Service Unavailable`.
 
-```text
-https://ollama.com/download/windows
+Instala Ollama desde:
+
+```txt
+https://ollama.com
 ```
 
-Despues de instalarlo, cierra y abre PowerShell. Verifica:
+Descarga el modelo configurado en `.env`:
 
 ```powershell
-ollama --version
 ollama pull llama3.2
+```
+
+Verifica que exista:
+
+```powershell
 ollama list
 ```
 
-Tambien puedes comprobar que el servidor local responde en:
+Levanta Ollama si no esta corriendo:
 
-```text
-http://localhost:11434/api/tags
+```powershell
+ollama serve
 ```
 
-Si `POST /api/chat/preguntar` devuelve `503`, normalmente significa que Ollama no esta corriendo o que el modelo `llama3.2` no esta descargado.
+Si `ollama serve` responde que el puerto `11434` ya esta en uso, significa que Ollama ya esta corriendo.
+
+Prueba una generacion:
+
+```powershell
+ollama run llama3.2
+```
+
+Dentro del chat interactivo de Ollama puedes salir escribiendo:
+
+```txt
+/bye
+```
+
+Nota: `/bye` solo funciona dentro de `ollama run`, no en PowerShell normal.
 
 ## Ejecutar servidor
 
 ```powershell
-uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
+
+Usa `python -m uvicorn` desde el `.venv` para evitar ejecutar un `uvicorn` global sin dependencias como `motor`.
 
 Endpoints iniciales:
 
@@ -99,7 +126,7 @@ Endpoints iniciales:
 Despues de configurar `MONGODB_URI` en `.env`, ejecuta:
 
 ```powershell
-python -m app.seed.seed_objetos_celestes
+.\.venv\Scripts\python.exe -m app.seed.seed_objetos_celestes
 ```
 
 El seed inicial carga objetos astronomicos base en la coleccion `celestial_objects`.
@@ -109,7 +136,7 @@ El seed inicial carga objetos astronomicos base en la coleccion `celestial_objec
 Despues de configurar `MONGODB_URI` en `.env`, ejecuta:
 
 ```powershell
-python -m app.seed.crear_indices
+.\.venv\Scripts\python.exe -m app.seed.crear_indices
 ```
 
 El script crea indices normales para `celestial_objects`, `documents`, `document_chunks` y `query_history`. Tambien imprime la definicion del indice de MongoDB Atlas Vector Search para `document_chunks.embedding`.
@@ -120,45 +147,57 @@ El archivo de referencia del indice vectorial esta en:
 app/seed/atlas_vector_search_index.json
 ```
 
-## Seed APOD
+## Seed APOD, chunks y embeddings
 
-Despues de configurar `MONGODB_URI` y `NASA_API_KEY` en `.env`, ejecuta:
+APOD alimenta las colecciones documentales usadas por el RAG:
+
+- `documents`
+- `document_chunks`
+
+Primero descarga/actualiza documentos APOD y genera chunks:
 
 ```powershell
-python -m app.seed.seed_apod_documentos
+.\.venv\Scripts\python.exe -m app.seed.seed_apod_documentos
 ```
 
-Este seed consulta NASA APOD, guarda documentos crudos en `documents` y divide las explicaciones en chunks dentro de `document_chunks`. En esta fase los chunks quedan con `embedding=None`; los embeddings se generan en el siguiente modulo.
-
-## Generar embeddings
-
-Despues de cargar APOD, ejecuta:
+Luego genera embeddings para los chunks sin embedding:
 
 ```powershell
-pip install -r requirements-ml.txt
-python -m app.seed.generar_embeddings_chunks
+.\.venv\Scripts\python.exe -m app.seed.generar_embeddings_chunks
 ```
 
 Este proceso usa `sentence-transformers/all-MiniLM-L6-v2` mediante `fastembed` para completar el campo `embedding` de cada documento en `document_chunks`. El modelo genera vectores de 384 dimensiones.
 
 En MongoDB local, el chat usa un fallback de similitud coseno en Python. En MongoDB Atlas, puede usar Atlas Vector Search con el indice definido en `app/seed/atlas_vector_search_index.json`.
 
+Si NASA responde `HTTP 429 Too Many Requests`, configura una API key propia en `.env`:
+
+```env
+NASA_API_KEY=TU_API_KEY_DE_NASA
+```
+
+Tambien puedes bajar temporalmente:
+
+```env
+APOD_SEED_LIMIT=30
+```
+
 ## Flujo recomendado de preparacion
 
 ```powershell
-python -m app.seed.crear_indices
-python -m app.seed.seed_objetos_celestes
-python -m app.seed.seed_apod_documentos
+.\.venv\Scripts\python.exe -m app.seed.crear_indices
+.\.venv\Scripts\python.exe -m app.seed.seed_objetos_celestes
+.\.venv\Scripts\python.exe -m app.seed.seed_apod_documentos
 pip install -r requirements-ml.txt
-python -m app.seed.generar_embeddings_chunks
-uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m app.seed.generar_embeddings_chunks
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 Antes de usar `POST /api/chat/preguntar`, verifica:
 
 - `GET /api/db/ping` responde con `conectado: true`.
 - `GET /api/stats` muestra documentos, chunks y chunks con embedding.
-- Ollama responde en `http://localhost:11434/api/tags`.
+- Ollama responde en `http://127.0.0.1:11434/api/tags`.
 - `OLLAMA_MODEL` coincide con un modelo listado por `ollama list`.
 
 Con MongoDB local no necesitas Atlas Vector Search para la demo: el backend usa fallback local con similitud coseno. Si despliegas en MongoDB Atlas, configura el indice vectorial usando `app/seed/atlas_vector_search_index.json`.
@@ -173,11 +212,33 @@ Con MongoDB local no necesitas Atlas Vector Search para la demo: el backend usa 
 
 Solo permite las colecciones del proyecto y bloquea operadores peligrosos como `$where`, `$function`, `$out` y `$merge`.
 
+## Diagnostico rapido
+
+Verificar que el backend importa correctamente:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import app.main; print('app import ok')"
+```
+
+Verificar que Ollama responde:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:11434/api/tags
+```
+
+Si Consulta IA devuelve `503`, revisa:
+
+- Ollama esta corriendo.
+- `.env` tiene `OLLAMA_BASE_URL=http://127.0.0.1:11434`.
+- `.env` tiene `OLLAMA_MODEL=llama3.2`.
+- `.env` tiene `OLLAMA_TIMEOUT_SECONDS=180` si el modelo tarda mas de un minuto.
+- `ollama list` muestra ese modelo.
+
 ## Ejecutar pruebas
 
 ```powershell
 pip install -r requirements-dev.txt
-pytest
+.\.venv\Scripts\python.exe -m pytest
 ```
 
 ## Estructura

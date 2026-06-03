@@ -6,6 +6,7 @@ from app.rag.embeddings import GeneradorEmbeddings
 from app.rag.ollama_client import OllamaClient
 from app.rag.prompt_builder import PromptBuilder
 from app.repositories.chunks_documentos_repository import ChunksDocumentosRepository
+from app.repositories.documentos_repository import DocumentosRepository
 from app.repositories.historial_consultas_repository import HistorialConsultasRepository
 from app.repositories.objetos_celestes_repository import ObjetosCelestesRepository
 from app.schemas.chat import (
@@ -22,6 +23,7 @@ class ChatService:
         chunks_repository: ChunksDocumentosRepository,
         historial_repository: HistorialConsultasRepository,
         objetos_repository: ObjetosCelestesRepository | None = None,
+        documentos_repository: DocumentosRepository | None = None,
         generador_embeddings: GeneradorEmbeddings | None = None,
         ollama_client: OllamaClient | None = None,
         prompt_builder: PromptBuilder | None = None,
@@ -29,8 +31,13 @@ class ChatService:
         self.chunks_repository = chunks_repository
         self.historial_repository = historial_repository
         self.objetos_repository = objetos_repository
+        self.documentos_repository = documentos_repository
         self.generador_embeddings = generador_embeddings or GeneradorEmbeddings(settings.embedding_model)
-        self.ollama_client = ollama_client or OllamaClient(settings.ollama_base_url, settings.ollama_model)
+        self.ollama_client = ollama_client or OllamaClient(
+            settings.ollama_base_url,
+            settings.ollama_model,
+            settings.ollama_timeout_seconds,
+        )
         self.prompt_builder = prompt_builder or PromptBuilder()
 
     async def preguntar(self, request: PreguntaChatRequest) -> RespuestaChatResponse:
@@ -52,6 +59,7 @@ class ChatService:
         ]
 
         fuentes.extend(await self._buscar_fuentes_objetos(request.pregunta))
+        fuentes.extend(await self._buscar_fuentes_documentos_recientes(request.pregunta))
 
         prompt = self.prompt_builder.construir(request.pregunta, fuentes)
 
@@ -110,6 +118,40 @@ class ChatService:
             for objeto in objetos
         ]
 
+    async def _buscar_fuentes_documentos_recientes(self, pregunta: str) -> list[FuenteRag]:
+        if self.documentos_repository is None:
+            return []
+
+        pregunta_normalizada = self._normalizar_texto(pregunta)
+        pide_apod = "apod" in pregunta_normalizada or "documento" in pregunta_normalizada
+        pide_recientes = "reciente" in pregunta_normalizada or "ultim" in pregunta_normalizada
+        pide_resumen = "resume" in pregunta_normalizada or "resumen" in pregunta_normalizada
+
+        if not pide_apod or not (pide_recientes or pide_resumen):
+            return []
+
+        documentos = await self.documentos_repository.listar_por_fuente_recientes(
+            "apod",
+            limite=5,
+        )
+
+        return [
+            FuenteRag(
+                chunk_id=f"documento:{documento['id']}",
+                documento_id=documento["id"],
+                texto=self._formatear_documento(documento),
+                score=None,
+                metadatos={
+                    "coleccion": "documents",
+                    "tipo_fuente": "documento_reciente",
+                    "fuente": documento.get("fuente"),
+                    "titulo": documento.get("titulo"),
+                    "fecha_publicacion": documento.get("fecha_publicacion"),
+                },
+            )
+            for documento in documentos
+        ]
+
     def _extraer_terminos_busqueda(self, pregunta: str) -> list[str]:
         stopwords = {
             "sobre",
@@ -145,6 +187,10 @@ class ChatService:
 
         return list(dict.fromkeys(terminos))[:8]
 
+    def _normalizar_texto(self, texto: str) -> str:
+        reemplazos = str.maketrans("áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN")
+        return texto.translate(reemplazos).lower()
+
     def _formatear_objeto(self, objeto: dict) -> str:
         propiedades = objeto.get("propiedades_fisicas") or {}
         propiedades_texto = ", ".join(
@@ -163,3 +209,13 @@ class ChatService:
             partes.append(f"Etiquetas: {etiquetas}")
 
         return "\n".join(partes)
+
+    def _formatear_documento(self, documento: dict) -> str:
+        return "\n".join(
+            [
+                f"Documento APOD: {documento.get('titulo', 'Sin titulo')}",
+                f"Fecha: {documento.get('fecha_publicacion', 'sin fecha')}",
+                f"Descripcion: {documento.get('descripcion', '')}",
+                f"URL: {documento.get('url', '')}",
+            ]
+        )

@@ -31,6 +31,15 @@ class DocumentosRepository:
         documentos = await cursor.to_list(length=limite)
         return [self._serializar(documento) for documento in documentos]
 
+    async def listar_por_fuente_recientes(self, fuente: str, *, limite: int) -> list[dict[str, Any]]:
+        cursor = (
+            self.collection.find({"fuente": fuente})
+            .sort("fecha_publicacion", -1)
+            .limit(limite)
+        )
+        documentos = await cursor.to_list(length=limite)
+        return [self._serializar(documento) for documento in documentos]
+
     async def obtener_por_id(self, documento_id: str) -> dict[str, Any] | None:
         if not ObjectId.is_valid(documento_id):
             return None
