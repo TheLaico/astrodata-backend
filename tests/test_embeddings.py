@@ -2,8 +2,7 @@ from app.rag.embeddings import GeneradorEmbeddings
 
 
 class ModeloFalso:
-    def encode(self, sentences, *, normalize_embeddings: bool):
-        assert normalize_embeddings is True
+    def embed(self, sentences):
         return [[float(indice), 0.5] for indice, _ in enumerate(sentences)]
 
 

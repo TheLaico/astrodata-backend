@@ -8,14 +8,20 @@ class Settings(BaseSettings):
     app_name: str = "AstroData Lab API"
     app_env: str = "development"
     api_prefix: str = "/api"
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = (
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000"
+    )
+    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1):517[0-9]$"
 
     mongodb_uri: str = ""
     mongodb_database: str = "astrodata_lab"
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
     embedding_batch_size: int = 16
     vector_search_index_name: str = "vector_index_document_chunks"

@@ -4,6 +4,13 @@ Backend de AstroData Lab construido con FastAPI.
 
 ## Configuracion local
 
+Requisitos instalados en la maquina:
+
+- Python 3.13 o compatible.
+- MongoDB Community Server corriendo en `mongodb://localhost:27017/`.
+- Ollama para ejecutar el LLM local.
+- Modelo de Ollama `llama3.2`.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -11,7 +18,48 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Edita `.env` cuando tengas la URI real de MongoDB Atlas.
+Para desarrollo local, deja estas variables en `.env`:
+
+```env
+MONGODB_URI=mongodb://localhost:27017/
+MONGODB_DATABASE=astrodata_lab
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+NASA_API_KEY=DEMO_KEY
+```
+
+Las dependencias de embeddings se instalan aparte:
+
+```powershell
+pip install -r requirements-ml.txt
+```
+
+`requirements-ml.txt` usa `fastembed`, evitando la instalacion pesada de PyTorch.
+
+## Instalar y preparar Ollama
+
+Descarga Ollama para Windows desde:
+
+```text
+https://ollama.com/download/windows
+```
+
+Despues de instalarlo, cierra y abre PowerShell. Verifica:
+
+```powershell
+ollama --version
+ollama pull llama3.2
+ollama list
+```
+
+Tambien puedes comprobar que el servidor local responde en:
+
+```text
+http://localhost:11434/api/tags
+```
+
+Si `POST /api/chat/preguntar` devuelve `503`, normalmente significa que Ollama no esta corriendo o que el modelo `llama3.2` no esta descargado.
 
 ## Ejecutar servidor
 
@@ -87,10 +135,13 @@ Este seed consulta NASA APOD, guarda documentos crudos en `documents` y divide l
 Despues de cargar APOD, ejecuta:
 
 ```powershell
+pip install -r requirements-ml.txt
 python -m app.seed.generar_embeddings_chunks
 ```
 
-Este proceso usa `all-MiniLM-L6-v2` para completar el campo `embedding` de cada documento en `document_chunks`. El modelo genera vectores normalizados de 384 dimensiones, compatibles con busqueda por coseno en MongoDB Atlas Vector Search.
+Este proceso usa `sentence-transformers/all-MiniLM-L6-v2` mediante `fastembed` para completar el campo `embedding` de cada documento en `document_chunks`. El modelo genera vectores de 384 dimensiones.
+
+En MongoDB local, el chat usa un fallback de similitud coseno en Python. En MongoDB Atlas, puede usar Atlas Vector Search con el indice definido en `app/seed/atlas_vector_search_index.json`.
 
 ## Flujo recomendado de preparacion
 
@@ -98,11 +149,19 @@ Este proceso usa `all-MiniLM-L6-v2` para completar el campo `embedding` de cada 
 python -m app.seed.crear_indices
 python -m app.seed.seed_objetos_celestes
 python -m app.seed.seed_apod_documentos
+pip install -r requirements-ml.txt
 python -m app.seed.generar_embeddings_chunks
 uvicorn app.main:app --reload
 ```
 
-Antes de usar `POST /api/chat/preguntar`, configura el indice vectorial en MongoDB Atlas usando `app/seed/atlas_vector_search_index.json` y verifica que Ollama este corriendo con el modelo definido en `OLLAMA_MODEL`.
+Antes de usar `POST /api/chat/preguntar`, verifica:
+
+- `GET /api/db/ping` responde con `conectado: true`.
+- `GET /api/stats` muestra documentos, chunks y chunks con embedding.
+- Ollama responde en `http://localhost:11434/api/tags`.
+- `OLLAMA_MODEL` coincide con un modelo listado por `ollama list`.
+
+Con MongoDB local no necesitas Atlas Vector Search para la demo: el backend usa fallback local con similitud coseno. Si despliegas en MongoDB Atlas, configura el indice vectorial usando `app/seed/atlas_vector_search_index.json`.
 
 ## Terminal de BD
 

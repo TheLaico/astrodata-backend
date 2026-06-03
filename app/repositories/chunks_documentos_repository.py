@@ -1,7 +1,9 @@
+import math
 from typing import Any
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import PyMongoError
 from pymongo import ReturnDocument
 
 from app.core.config import settings
@@ -134,8 +136,63 @@ class ChunksDocumentosRepository:
             },
         ]
 
-        documentos = await self.collection.aggregate(pipeline).to_list(length=limite)
-        return [self._serializar(documento) for documento in documentos]
+        try:
+            documentos = await self.collection.aggregate(pipeline).to_list(length=limite)
+            return [self._serializar(documento) for documento in documentos]
+        except PyMongoError:
+            return await self._buscar_por_vector_local(embedding, limite=limite)
+
+    async def _buscar_por_vector_local(
+        self,
+        embedding: list[float],
+        *,
+        limite: int,
+    ) -> list[dict[str, Any]]:
+        cursor = self.collection.find(
+            {
+                "embedding": {
+                    "$exists": True,
+                    "$ne": None,
+                }
+            },
+            {
+                "documento_id": 1,
+                "fuente": 1,
+                "indice": 1,
+                "texto": 1,
+                "metadatos": 1,
+                "embedding": 1,
+            },
+        )
+        documentos = await cursor.to_list(length=None)
+
+        documentos_con_score = []
+        for documento in documentos:
+            score = self._coseno(embedding, documento.get("embedding", []))
+            documento["score"] = score
+            documento.pop("embedding", None)
+            documentos_con_score.append(documento)
+
+        documentos_ordenados = sorted(
+            documentos_con_score,
+            key=lambda item: item["score"],
+            reverse=True,
+        )[:limite]
+
+        return [self._serializar(documento) for documento in documentos_ordenados]
+
+    def _coseno(self, vector_a: list[float], vector_b: list[float]) -> float:
+        if not vector_a or not vector_b or len(vector_a) != len(vector_b):
+            return 0.0
+
+        producto = sum(a * b for a, b in zip(vector_a, vector_b, strict=True))
+        norma_a = math.sqrt(sum(a * a for a in vector_a))
+        norma_b = math.sqrt(sum(b * b for b in vector_b))
+
+        if norma_a == 0 or norma_b == 0:
+            return 0.0
+
+        return producto / (norma_a * norma_b)
 
     def _serializar(self, documento: dict[str, Any]) -> dict[str, Any]:
         documento["id"] = str(documento.pop("_id"))
